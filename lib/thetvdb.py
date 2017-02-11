@@ -30,6 +30,7 @@ SES.mount('https://', HTTPAdapter(max_retries=RETRIES))
 
 ADDON_ID = "script.module.thetvdb"
 KODI_LANGUAGE = xbmc.getLanguage(xbmc.ISO_639_1)
+KODI_VERSION = int(xbmc.getInfoLabel("System.BuildVersion").split(".")[0])
 
 
 class TheTvDb(object):
@@ -120,9 +121,11 @@ class TheTvDb(object):
         '''
         episode = self.get_data("episodes/%s" % episodeid, True)
         # we prefer localized content but if that fails, fallback to default
-        if not episode.get("overview"):
+        if episode and not episode.get("overview"):
             episode = self.get_data("episodes/%s" % episodeid)
-        return self.map_episode_data(episode, seriesdetails)
+        if episode:
+            episode = self.map_episode_data(episode, seriesdetails)
+        return episode
 
     @use_cache(14)
     def get_series(self, seriesid):
@@ -263,7 +266,7 @@ class TheTvDb(object):
         '''
             Allows the user to search for a series based the name.
             Returns an array of results that match the query.
-            Usage: specify the series ID: TheTvDb().search_series(searchphrase)
+            Usage: specify the query: TheTvDb().search_series(searchphrase)
 
             Available parameter:
             prefer_localized --> True if you want to set the current kodi language as preferred in the results
@@ -297,7 +300,8 @@ class TheTvDb(object):
                     if airdate >= date.today() and (airdate <= (date.today() + timedelta(days=self.days_ahead))):
                         # if airdate is today or (max X days) in the future add to our list
                         episode = self.get_episode(episode["id"], seriesinfo)
-                        next_episodes.append(episode)
+                        if episode: #apparently some episode id's are reported that do not exist
+                            next_episodes.append(episode)
 
         # return our list sorted by episode
         return sorted(next_episodes, key=lambda k: k.get('episode', ""))
@@ -328,8 +332,13 @@ class TheTvDb(object):
 
     def get_continuing_kodi_series(self):
         '''iterates all tvshows in the kodi library to find returning series'''
-        kodi_series = self.get_kodi_json('VideoLibrary.GetTvShows',
-                                         '{"properties": [ "title","imdbnumber","art", "genre", "cast", "studio" ] }')
+        if KODI_VERSION > 16:
+            kodi_series = self.get_kodi_json(
+                'VideoLibrary.GetTvShows',
+                '{"properties": [ "title","imdbnumber","art", "genre", "cast", "studio", "uniqueid" ] }')
+        else:
+            kodi_series = self.get_kodi_json('VideoLibrary.GetTvShows',
+                                             '{"properties": [ "title","imdbnumber","art", "genre", "cast", "studio" ] }')
         cont_series = []
         if kodi_series and kodi_series.get("tvshows"):
             for kodi_serie in kodi_series["tvshows"]:
@@ -338,13 +347,23 @@ class TheTvDb(object):
                     # lookup serie by imdbid
                     tvdb_details = self.get_series_by_imdb_id(kodi_serie["imdbnumber"])
                 elif kodi_serie["imdbnumber"]:
-                    # imdbid in kodidb is already tvdb id
+                    # assume imdbid in kodidb is already tvdb id
                     tvdb_details = self.get_series(kodi_serie["imdbnumber"])
+                elif "uniqueid" in kodi_serie:
+                    # kodi 17+ uses the uniqueid field to store the imdb/tvdb number
+                    for value in kodi_serie["uniqueid"]:
+                        if value.startswith("tt"):
+                            tvdb_details = self.get_series_by_imdb_id(value)
+                        elif value:
+                            tvdb_details = self.get_series(value)
+                        if tvdb_details:
+                            break
                 if not tvdb_details:
                     # lookup series id by name
                     result = self.search_series(kodi_serie["title"])
                     if result:
                         tvdb_details = result[0]
+                        tvdb_details["tvdb_id"] = tvdb_details["id"]
                 if tvdb_details and tvdb_details["status"] == "Continuing":
                     kodi_serie["tvdb_id"] = tvdb_details["tvdb_id"]
                     cont_series.append(kodi_serie)
@@ -374,7 +393,7 @@ class TheTvDb(object):
         '''maps full episode data from tvdb to kodi compatible format'''
         result = {}
         result["art"] = {}
-        if episode_details["filename"]:
+        if episode_details.get("filename"):
             result["art"]["thumb"] = "http://thetvdb.com/banners/" + episode_details["filename"]
             result["thumbnail"] = result["art"]["thumb"]
         result["art"] = {}
@@ -587,8 +606,8 @@ class TheTvDb(object):
         day_name_short = day_name[:3]
         try:
             locale = arrow.locales.get_locale(KODI_LANGUAGE)
-            day_names = { "monday": 1, "tuesday": 2, "wednesday": 3, "thurday": 4,
-                "friday": 5, "saturday": 6, "sunday": 7}
+            day_names = {"monday": 1, "tuesday": 2, "wednesday": 3, "thurday": 4,
+                         "friday": 5, "saturday": 6, "sunday": 7}
             day_int = day_names.get(weekday.lower())
             if day_int:
                 day_name = locale.day_name(day_int).capitalize()
