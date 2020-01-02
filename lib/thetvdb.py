@@ -696,7 +696,7 @@ class TheTvDb(object):
     def _get_kodi_json(method, params):
         '''helper to get data from the kodi json database'''
         json_response = xbmc.executeJSONRPC('{ "jsonrpc": "2.0", "method" : "%s", "params": %s, "id":1 }'
-                                            % (method, params.encode("utf-8")))
+                                            % (method, params))
         jsonobject = json.loads(json_response)
         if 'result' in jsonobject:
             jsonobject = jsonobject['result']
