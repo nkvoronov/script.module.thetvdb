@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.module.thetvdb"
 	name="The TVDB API v2"
-	version="1.0.28.016"
+	version="1.0.28.017"
 	provider-name="marcelveldt, YLLOW_DRAGON">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
-		<import addon="script.module.requests" version="2.3.0"/>
-		<import addon="script.module.simplejson" version="3.3.0"/>
+		<import addon="script.module.requests" version="2.22.0"/>
+		<import addon="script.module.simplejson" version="3.17.0"/>
 		<import addon="script.module.simplecache" version="2.0.0"/>
 		<import addon="script.module.arrow" version="0.15.5"/>
 	</requires>
